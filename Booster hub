@@ -1,99 +1,113 @@
---[[ RAM KILLER v2 — FIXED
-     Tối ưu: giảm lag spike, bảo vệ nhân vật, quét đúng chỗ
+--[[ RAM KILLER v4 — FINAL STABLE
      GitHub: ngphuoclap2023-collab/Booster-hub
+     
+     FIX TOÀN BỘ:
+     - Không đụng ReplicatedStorage (an toàn game)
+     - Không xóa Decal/Texture/Sky (giữ map, billboard)
+     - Ping không tăng (IncomingReplicationLag = 0)
+     - Cache character (an toàn respawn)
+     - DescendantAdded thay polling (không lag spike)
+     - GC thông minh (chỉ khi RAM > 1.2GB)
+     - Chạy lại không conflict (tự cleanup)
 --]]
 
-local Players    = game:GetService("Players")
-local Lighting   = game:GetService("Lighting")
-local Workspace  = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local StarterGui = game:GetService("StarterGui")
-local RunService = game:GetService("RunService")
+-- Cleanup phiên trước nếu có
+if _G.__RK_CLEANUP then pcall(_G.__RK_CLEANUP) end
+_G.__RK_CLEANUP = nil
+
+local Players      = game:GetService("Players")
+local Lighting     = game:GetService("Lighting")
+local Workspace    = game:GetService("Workspace")
+local StarterGui   = game:GetService("StarterGui")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
+local conns = {}
 
-local function notify(title, text, dur)
+local function notify(t, x, d)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
-            Title = title, Text = text, Duration = dur or 3
+            Title = t, Text = x, Duration = d or 3
         })
     end)
 end
 
-notify("💀 RAM Killer v2", "Đang tối ưu...", 3)
+notify("💀 RAM Killer v4", "Đang tối ưu...", 3)
 
--- 1) Graphics tối đa (đã bỏ property sai)
+-- 1) Graphics tối thiểu
+pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
+pcall(function() settings().Rendering.ShadowMapSize = 0 end)
+pcall(function() settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01 end)
+
+-- 2) Cache character (an toàn respawn)
+local protectedChar = player.Character
+table.insert(conns, player.CharacterAdded:Connect(function(c) protectedChar = c end))
+
+local function isProtected(inst)
+    return protectedChar ~= nil and inst:IsDescendantOf(protectedChar)
+end
+
+-- 3) Class cần xóa (KHÔNG có Decal/Texture)
+local KILL = {
+    ParticleEmitter = true, Trail = true, Smoke = true, Fire = true,
+    Sparkles = true, Beam = true,
+    PointLight = true, SpotLight = true, SurfaceLight = true,
+    Sound = true,
+}
+
+local function killIfBad(v)
+    if KILL[v.ClassName] and not isProtected(v) then
+        pcall(function() v:Destroy() end)
+    end
+end
+
+-- 4) Quét 1 lần ban đầu
 pcall(function()
-    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-    settings().Rendering.ShadowMapSize = 0
-    settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+    for _, v in ipairs(Workspace:GetDescendants()) do killIfBad(v) end
 end)
 
--- 2) BẢO VỆ: không xóa gì thuộc về nhân vật player
-local function isProtected(inst)
-    local ok, char = pcall(function() return player.Character end)
-    if not ok or not char then return false end
-    return inst:IsDescendantOf(char)
-end
-
--- 3) Xóa effect — có kiểm tra bảo vệ + chỉ quét chỗ cần
-local function nukeEffects(root)
-    pcall(function()
-        for _, v in ipairs(root:GetDescendants()) do
-            if isProtected(v) then continue end  -- bỏ qua nhân vật
-
-            if v:IsA("ParticleEmitter") or v:IsA("Trail")
-            or v:IsA("Smoke") or v:IsA("Fire")
-            or v:IsA("Sparkles") or v:IsA("Beam")
-            or v:IsA("PointLight") or v:IsA("SpotLight")
-            or v:IsA("SurfaceLight") then
-                v:Destroy()
-            elseif v:IsA("Decal") or v:IsA("Texture") then
-                v:Destroy()
-            elseif v:IsA("Sound") then
-                v:Destroy()
-            end
-        end
-    end)
-end
-
--- Quét 1 lần các khu vực chính
-nukeEffects(Workspace)
-nukeEffects(ReplicatedStorage)  -- thêm: nơi chứa effect template
-nukeEffects(Lighting)
-
--- 4) Xóa lighting effect (bỏ Sky để khỏi trắng trời)
+-- 5) Lighting (giữ Sky)
 pcall(function()
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 1e6
     for _, fx in ipairs(Lighting:GetChildren()) do
-        if fx:IsA("PostEffect") or fx:IsA("Atmosphere")
-        or fx:IsA("Clouds") then
-            fx:Destroy()
+        if fx:IsA("PostEffect") or fx:IsA("Atmosphere") or fx:IsA("Clouds") then
+            pcall(function() fx:Destroy() end)
         end
     end
 end)
 
--- 5) Tắt âm thanh (bỏ property sai)
+-- 6) Âm thanh toàn cục
 pcall(function()
-    for _, s in ipairs(game:GetService("SoundService"):GetDescendants()) do
-        if s:IsA("Sound") then s:Destroy() end
+    for _, s in ipairs(SoundService:GetDescendants()) do
+        if s:IsA("Sound") then pcall(function() s:Destroy() end) end
     end
 end)
 
--- 6) Dọn rác THÔNG MINH: mỗi 5s, chỉ quét khi cần
-local lastClean = 0
-RunService.Heartbeat:Connect(function()
-    local now = tick()
-    if now - lastClean < 5 then return end  -- 5s/lần, không phải 2s
-    lastClean = now
-    pcall(function() collectgarbage("collect") end)
-    nukeEffects(Workspace)  -- quét nhẹ, có bảo vệ char
-end)
+-- 7) Bắt effect MỚI spawn — KHÔNG polling, không lag spike
+table.insert(conns, Workspace.DescendantAdded:Connect(killIfBad))
 
--- 7) Network (giữ nguyên — có ích khi treo lâu)
-pcall(function()
-    settings().Network.IncomingReplicationLag = 0.1
-end)
+-- 8) GC thông minh — chỉ khi RAM thực sự cao
+table.insert(conns, task.spawn(function()
+    while true do
+        task.wait(30)
+        local mb = 0
+        pcall(function()
+            mb = game:GetService("Stats"):GetTotalMemoryUsageMb()
+        end)
+        if mb > 1200 then
+            pcall(function() collectgarbage("collect") end)
+        end
+    end
+end))
 
-notify("✅ RAM Killer v2", "Tối ưu xong!", 3)
+-- 9) Reset replication lag về 0 (mặc định)
+pcall(function() settings().Network.IncomingReplicationLag = 0 end)
+
+-- Cleanup khi chạy lại
+_G.__RK_CLEANUP = function()
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    conns = {}
+end
+
+notify("✅ RAM Killer v4", "Hoàn tất!", 3)
