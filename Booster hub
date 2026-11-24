@@ -1,72 +1,83 @@
---[[ RAM KILLER v4 — FINAL STABLE
-     GitHub: ngphuoclap2023-collab/Booster-hub
+--[[ ═══════════════════════════════════════════════════
+     ⚡ ULTIMATE PERFORMANCE SUITE v1.0
+     FPS Boost + Ping Stabilizer + RAM Killer + HUD
      
-     FIX TOÀN BỘ:
-     - Không đụng ReplicatedStorage (an toàn game)
-     - Không xóa Decal/Texture/Sky (giữ map, billboard)
-     - Ping không tăng (IncomingReplicationLag = 0)
-     - Cache character (an toàn respawn)
-     - DescendantAdded thay polling (không lag spike)
-     - GC thông minh (chỉ khi RAM > 1.2GB)
+     - HUD hiển thị FPS/RAM realtime (không cần console)
+     - An toàn: không đụng nhân vật, map, UI
      - Chạy lại không conflict (tự cleanup)
---]]
+     - Tự tắt khi dùng _G.__ULT_CLEAN()
+═══════════════════════════════════════════════════ ]]
 
--- Cleanup phiên trước nếu có
-if _G.__RK_CLEANUP then pcall(_G.__RK_CLEANUP) end
-_G.__RK_CLEANUP = nil
+-- Cleanup phiên trước
+if _G.__ULT_CLEAN then pcall(_G.__ULT_CLEAN) end
+_G.__ULT_CLEAN = nil
 
 local Players      = game:GetService("Players")
 local Lighting     = game:GetService("Lighting")
 local Workspace    = game:GetService("Workspace")
 local StarterGui   = game:GetService("StarterGui")
 local SoundService = game:GetService("SoundService")
+local RunService   = game:GetService("RunService")
+local Stats        = game:GetService("Stats")
 
 local player = Players.LocalPlayer
-local conns = {}
+local conns, running = {}, true
 
-local function notify(t, x, d)
+-- ─── HUD ───────────────────────────────────────
+local hudGui, hudLabel
+local function buildHUD()
     pcall(function()
-        StarterGui:SetCore("SendNotification", {
-            Title = t, Text = x, Duration = d or 3
-        })
+        if hudGui then hudGui:Destroy() end
+        local pg = player:WaitForChild("PlayerGui", 5)
+        if not pg then return end
+
+        hudGui = Instance.new("ScreenGui")
+        hudGui.Name = "ULT_HUD"
+        hudGui.ResetOnSpawn = false
+        hudGui.IgnoreGuiInset = true
+        hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        hudGui.Parent = pg
+
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(0, 220, 0, 78)
+        frame.Position = UDim2.new(0, 8, 0, 8)
+        frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
+        frame.BackgroundTransparency = 0.15
+        frame.BorderSizePixel = 0
+        frame.Parent = hudGui
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = frame
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(0, 255, 140)
+        stroke.Thickness = 1
+        stroke.Transparency = 0.4
+        stroke.Parent = frame
+
+        hudLabel = Instance.new("TextLabel")
+        hudLabel.Size = UDim2.new(1, -16, 1, -12)
+        hudLabel.Position = UDim2.new(0, 8, 0, 6)
+        hudLabel.BackgroundTransparency = 1
+        hudLabel.TextColor3 = Color3.fromRGB(0, 255, 140)
+        hudLabel.Font = Enum.Font.GothamBold
+        hudLabel.TextSize = 12
+        hudLabel.TextXAlignment = Enum.TextXAlignment.Left
+        hudLabel.TextYAlignment = Enum.TextYAlignment.Top
+        hudLabel.Text = "⚡ ULTIMATE\nLoading..."
+        hudLabel.Parent = frame
     end)
 end
+buildHUD()
 
-notify("💀 RAM Killer v4", "Đang tối ưu...", 3)
-
--- 1) Graphics tối thiểu
+-- ─── 1) FPS BOOST ──────────────────────────────
+pcall(function() setfpscap(240) end)
 pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level01 end)
 pcall(function() settings().Rendering.ShadowMapSize = 0 end)
 pcall(function() settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01 end)
 
--- 2) Cache character (an toàn respawn)
-local protectedChar = player.Character
-table.insert(conns, player.CharacterAdded:Connect(function(c) protectedChar = c end))
-
-local function isProtected(inst)
-    return protectedChar ~= nil and inst:IsDescendantOf(protectedChar)
-end
-
--- 3) Class cần xóa (KHÔNG có Decal/Texture)
-local KILL = {
-    ParticleEmitter = true, Trail = true, Smoke = true, Fire = true,
-    Sparkles = true, Beam = true,
-    PointLight = true, SpotLight = true, SurfaceLight = true,
-    Sound = true,
-}
-
-local function killIfBad(v)
-    if KILL[v.ClassName] and not isProtected(v) then
-        pcall(function() v:Destroy() end)
-    end
-end
-
--- 4) Quét 1 lần ban đầu
-pcall(function()
-    for _, v in ipairs(Workspace:GetDescendants()) do killIfBad(v) end
-end)
-
--- 5) Lighting (giữ Sky)
+-- ─── 2) LIGHTING TỐI ƯU ────────────────────────
 pcall(function()
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 1e6
@@ -77,37 +88,85 @@ pcall(function()
     end
 end)
 
--- 6) Âm thanh toàn cục
+-- ─── 3) RAM KILLER ─────────────────────────────
+local protectedChar = player.Character
+table.insert(conns, player.CharacterAdded:Connect(function(c) protectedChar = c end))
+
+local KILL = {
+    ParticleEmitter = true, Trail = true, Smoke = true, Fire = true,
+    Sparkles = true, Beam = true,
+    PointLight = true, SpotLight = true, SurfaceLight = true,
+    Sound = true,
+}
+
+local function killIfBad(v)
+    if KILL[v.ClassName] and protectedChar and not v:IsDescendantOf(protectedChar) then
+        pcall(function() v:Destroy() end)
+    end
+end
+
+pcall(function()
+    for _, v in ipairs(Workspace:GetDescendants()) do killIfBad(v) end
+end)
+
 pcall(function()
     for _, s in ipairs(SoundService:GetDescendants()) do
         if s:IsA("Sound") then pcall(function() s:Destroy() end) end
     end
 end)
 
--- 7) Bắt effect MỚI spawn — KHÔNG polling, không lag spike
 table.insert(conns, Workspace.DescendantAdded:Connect(killIfBad))
 
--- 8) GC thông minh — chỉ khi RAM thực sự cao
-table.insert(conns, task.spawn(function()
-    while true do
-        task.wait(30)
+-- ─── 4) PING STABILIZER ────────────────────────
+-- Reset replication lag về 0 (mặc định của Roblox)
+pcall(function() settings().Network.IncomingReplicationLag = 0 end)
+
+-- ─── 5) FPS COUNTER ────────────────────────────
+local frameCount, fpsTime, fpsValue = 0, 0, 0
+table.insert(conns, RunService.RenderStepped:Connect(function(dt)
+    frameCount = frameCount + 1
+    fpsTime = fpsTime + dt
+    if fpsTime >= 1 then
+        fpsValue = math.floor(frameCount / fpsTime)
+        frameCount, fpsTime = 0, 0
+    end
+end))
+
+-- ─── 6) HUD UPDATER + SMART GC ─────────────────
+task.spawn(function()
+    while running do
+        task.wait(1)
+        if not running then break end
         local mb = 0
-        pcall(function()
-            mb = game:GetService("Stats"):GetTotalMemoryUsageMb()
-        end)
+        pcall(function() mb = Stats:GetTotalMemoryUsageMb() end)
+
+        if hudLabel and hudLabel.Parent then
+            hudLabel.Text = string.format(
+                "⚡ ULTIMATE  ●  ON\nFPS: %d  |  RAM: %d MB\nReplicationLag: 0  |  Safe",
+                fpsValue, math.floor(mb)
+            )
+        end
+
+        -- GC chỉ khi RAM thực sự cao
         if mb > 1200 then
             pcall(function() collectgarbage("collect") end)
         end
     end
-end))
+end)
 
--- 9) Reset replication lag về 0 (mặc định)
-pcall(function() settings().Network.IncomingReplicationLag = 0 end)
-
--- Cleanup khi chạy lại
-_G.__RK_CLEANUP = function()
-    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+-- ─── 7) CLEANUP ────────────────────────────────
+_G.__ULT_CLEAN = function()
+    running = false
+    for _, c in ipairs(conns) do
+        pcall(function() c:Disconnect() end)
+    end
     conns = {}
+    if hudGui then pcall(function() hudGui:Destroy() end) end
 end
 
-notify("✅ RAM Killer v4", "Hoàn tất!", 3)
+-- Thông báo (nếu game không chặn)
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "⚡ ULTIMATE", Text = "Đã kích hoạt tối ưu!", Duration = 3
+    })
+end)
