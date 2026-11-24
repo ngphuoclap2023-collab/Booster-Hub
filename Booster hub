@@ -1,30 +1,47 @@
---[[ RAM KILLER — Dành cho treo AFK game nặng
-     Mục tiêu: giảm RAM tối đa, không cần đẹp
+--[[ RAM KILLER v2 — FIXED
+     Tối ưu: giảm lag spike, bảo vệ nhân vật, quét đúng chỗ
+     GitHub: ngphuoclap2023-collab/Booster-hub
 --]]
 
 local Players    = game:GetService("Players")
 local Lighting   = game:GetService("Lighting")
 local Workspace  = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 
-pcall(function()
-    StarterGui:SetCore("SendNotification", {
-        Title = "💀 RAM Killer", Text = "Đang dọn RAM...", Duration = 3
-    })
-end)
+local player = Players.LocalPlayer
 
--- 1) Hạ graphics tối đa (giảm texture load = giảm RAM nhiều nhất)
+local function notify(title, text, dur)
+    pcall(function()
+        StarterGui:SetCore("SendNotification", {
+            Title = title, Text = text, Duration = dur or 3
+        })
+    end)
+end
+
+notify("💀 RAM Killer v2", "Đang tối ưu...", 3)
+
+-- 1) Graphics tối đa (đã bỏ property sai)
 pcall(function()
     settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
     settings().Rendering.ShadowMapSize = 0
     settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
-    settings().Rendering.Edition = "Disabled"
 end)
 
--- 2) XÓA HẲN (không phải tắt) mọi effect
+-- 2) BẢO VỆ: không xóa gì thuộc về nhân vật player
+local function isProtected(inst)
+    local ok, char = pcall(function() return player.Character end)
+    if not ok or not char then return false end
+    return inst:IsDescendantOf(char)
+end
+
+-- 3) Xóa effect — có kiểm tra bảo vệ + chỉ quét chỗ cần
 local function nukeEffects(root)
     pcall(function()
         for _, v in ipairs(root:GetDescendants()) do
+            if isProtected(v) then continue end  -- bỏ qua nhân vật
+
             if v:IsA("ParticleEmitter") or v:IsA("Trail")
             or v:IsA("Smoke") or v:IsA("Fire")
             or v:IsA("Sparkles") or v:IsA("Beam")
@@ -39,43 +56,44 @@ local function nukeEffects(root)
         end
     end)
 end
-nukeEffects(Workspace)
 
--- 3) Xóa toàn bộ lighting effect
+-- Quét 1 lần các khu vực chính
+nukeEffects(Workspace)
+nukeEffects(ReplicatedStorage)  -- thêm: nơi chứa effect template
+nukeEffects(Lighting)
+
+-- 4) Xóa lighting effect (bỏ Sky để khỏi trắng trời)
 pcall(function()
     Lighting.GlobalShadows = false
     Lighting.FogEnd = 1e6
     for _, fx in ipairs(Lighting:GetChildren()) do
-        if fx:IsA("PostEffect") or fx:IsA("Sky")
-        or fx:IsA("Atmosphere") or fx:IsA("Clouds") then
+        if fx:IsA("PostEffect") or fx:IsA("Atmosphere")
+        or fx:IsA("Clouds") then
             fx:Destroy()
         end
     end
 end)
 
--- 4) Tắt âm thanh toàn cục (giảm CPU + RAM audio decode)
+-- 5) Tắt âm thanh (bỏ property sai)
 pcall(function()
-    game:GetService("SoundService").RespectFilteringEnabled = true
     for _, s in ipairs(game:GetService("SoundService"):GetDescendants()) do
         if s:IsA("Sound") then s:Destroy() end
     end
 end)
 
--- 5) Dọn rác Lua liên tục (mạnh hơn bản cũ)
-task.spawn(function()
-    while task.wait(2) do
-        pcall(function() collectgarbage("collect") end)
-        nukeEffects(Workspace)  -- dọn effect mới spawn
-    end
+-- 6) Dọn rác THÔNG MINH: mỗi 5s, chỉ quét khi cần
+local lastClean = 0
+RunService.Heartbeat:Connect(function()
+    local now = tick()
+    if now - lastClean < 5 then return end  -- 5s/lần, không phải 2s
+    lastClean = now
+    pcall(function() collectgarbage("collect") end)
+    nukeEffects(Workspace)  -- quét nhẹ, có bảo vệ char
 end)
 
--- 6) Giảm tải network (ping ổn định khi treo lâu)
+-- 7) Network (giữ nguyên — có ích khi treo lâu)
 pcall(function()
     settings().Network.IncomingReplicationLag = 0.1
 end)
 
-pcall(function()
-    StarterGui:SetCore("SendNotification", {
-        Title = "✅ Xong!", Text = "RAM đã tối ưu tối đa", Duration = 3
-    })
-end)
+notify("✅ RAM Killer v2", "Tối ưu xong!", 3)
