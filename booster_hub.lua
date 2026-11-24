@@ -1,8 +1,8 @@
 --[[ ═══════════════════════════════════════════════════
-     ⚡ ULTIMATE PERFORMANCE SUITE v1.0
-     FPS Boost + Ping Stabilizer + RAM Killer + HUD
-     
-     - HUD hiển thị FPS/RAM realtime (không cần console)
+     ⚡ ULTIMATE PERFORMANCE SUITE v1.1
+     FPS Boost + Ping Stabilizer + RAM Killer + HUD (Draggable)
+
+     - HUD kéo được, hiển thị FPS/RAM realtime
      - An toàn: không đụng nhân vật, map, UI
      - Chạy lại không conflict (tự cleanup)
      - Tự tắt khi dùng _G.__ULT_CLEAN()
@@ -23,7 +23,7 @@ local Stats        = game:GetService("Stats")
 local player = Players.LocalPlayer
 local conns, running = {}, true
 
--- ─── HUD ───────────────────────────────────────
+-- ─── HUD (kéo được, to hơn) ────────────────────
 local hudGui, hudLabel
 local function buildHUD()
     pcall(function()
@@ -35,15 +35,19 @@ local function buildHUD()
         hudGui.Name = "ULT_HUD"
         hudGui.ResetOnSpawn = false
         hudGui.IgnoreGuiInset = true
+        hudGui.DisplayOrder = 999
         hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         hudGui.Parent = pg
 
         local frame = Instance.new("Frame")
-        frame.Size = UDim2.new(0, 220, 0, 78)
-        frame.Position = UDim2.new(0, 8, 0, 8)
+        frame.Name = "HUD_Frame"
+        frame.Size = UDim2.new(0, 260, 0, 90)
+        frame.Position = UDim2.new(0, 10, 0, 10)
         frame.BackgroundColor3 = Color3.fromRGB(12, 12, 18)
-        frame.BackgroundTransparency = 0.15
+        frame.BackgroundTransparency = 0.1
         frame.BorderSizePixel = 0
+        frame.Active = true          -- cho phép kéo
+        frame.Draggable = true       -- kéo tự do
         frame.Parent = hudGui
 
         local corner = Instance.new("UICorner")
@@ -53,7 +57,7 @@ local function buildHUD()
         local stroke = Instance.new("UIStroke")
         stroke.Color = Color3.fromRGB(0, 255, 140)
         stroke.Thickness = 1
-        stroke.Transparency = 0.4
+        stroke.Transparency = 0.3
         stroke.Parent = frame
 
         hudLabel = Instance.new("TextLabel")
@@ -62,7 +66,7 @@ local function buildHUD()
         hudLabel.BackgroundTransparency = 1
         hudLabel.TextColor3 = Color3.fromRGB(0, 255, 140)
         hudLabel.Font = Enum.Font.GothamBold
-        hudLabel.TextSize = 12
+        hudLabel.TextSize = 14
         hudLabel.TextXAlignment = Enum.TextXAlignment.Left
         hudLabel.TextYAlignment = Enum.TextYAlignment.Top
         hudLabel.Text = "⚡ ULTIMATE\nLoading..."
@@ -118,7 +122,6 @@ end)
 table.insert(conns, Workspace.DescendantAdded:Connect(killIfBad))
 
 -- ─── 4) PING STABILIZER ────────────────────────
--- Reset replication lag về 0 (mặc định của Roblox)
 pcall(function() settings().Network.IncomingReplicationLag = 0 end)
 
 -- ─── 5) FPS COUNTER ────────────────────────────
@@ -147,7 +150,6 @@ task.spawn(function()
             )
         end
 
-        -- GC chỉ khi RAM thực sự cao
         if mb > 1200 then
             pcall(function() collectgarbage("collect") end)
         end
@@ -167,6 +169,6 @@ end
 -- Thông báo (nếu game không chặn)
 pcall(function()
     StarterGui:SetCore("SendNotification", {
-        Title = "⚡ ULTIMATE", Text = "Đã kích hoạt tối ưu!", Duration = 3
+        Title = "⚡ ULTIMATE v1.1", Text = "Đã kích hoạt! Kéo HUD để di chuyển.", Duration = 3
     })
 end)
