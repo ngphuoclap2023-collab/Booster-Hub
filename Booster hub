@@ -1,124 +1,81 @@
--- ═══════════════════════════════════════════════════
---   BOOSTER HUB v1.1 (FIXED)
---   Game: Break and Steal an Egg
---   Platform: Delta Android Executor
--- ═══════════════════════════════════════════════════
+--[[ RAM KILLER — Dành cho treo AFK game nặng
+     Mục tiêu: giảm RAM tối đa, không cần đẹp
+--]]
 
-gg.setVisible(false)
-gg.clearResults()
-gg.sleep(200)
+local Players    = game:GetService("Players")
+local Lighting   = game:GetService("Lighting")
+local Workspace  = game:GetService("Workspace")
+local StarterGui = game:GetService("StarterGui")
 
--- ═══════════ TRẠNG THÁI ═══════════
-local FPS_ON  = false
-local PING_ON = false
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "💀 RAM Killer", Text = "Đang dọn RAM...", Duration = 3
+    })
+end)
 
--- Lưu giá trị GỐC để restore CHÍNH XÁC (fix Lỗi 2)
-local fpsSaved = {}
+-- 1) Hạ graphics tối đa (giảm texture load = giảm RAM nhiều nhất)
+pcall(function()
+    settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
+    settings().Rendering.ShadowMapSize = 0
+    settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+    settings().Rendering.Edition = "Disabled"
+end)
 
--- ═══════════ CHỨC NĂNG 1: TĂNG FPS ═══════════
-local function setFPSBoost(state)
-    if state then
-        if #fpsSaved > 0 then
-            gg.toast("ℹ️ FPS Boost đã bật rồi")
-            return true
-        end
-
-        gg.toast("⚡ Đang tìm FPS cap...")
-        fpsSaved = {}
-        gg.setRanges(gg.REGION_OTHER | gg.REGION_C_ALLOC | gg.REGION_ANONYMOUS | gg.REGION_JAVA_HEAP)
-
-        -- ── Ưu tiên FLOAT (Unity engine) ──
-        for _, cap in ipairs({"30.0", "60.0"}) do
-            gg.searchNumber(cap, gg.TYPE_FLOAT)
-            local n = gg.getResultsCount()
-            if n > 0 and n <= 300 then
-                local res   = gg.getResults(n)
-                local edits = {}
-                for _, r in ipairs(res) do
-                    table.insert(fpsSaved, {address = r.address, value = r.value, flags = r.flags})
-                    table.insert(edits,   {address = r.address, value = 120.0,  flags = r.flags})
-                end
-                gg.setValues(edits)
-            end
-            gg.clearResults()
-        end
-
-        -- ── Fallback DWORD ──
-        if #fpsSaved == 0 then
-            for _, cap in ipairs({"30", "60"}) do
-                gg.searchNumber(cap, gg.TYPE_DWORD)
-                local n = gg.getResultsCount()
-                if n > 0 and n <= 300 then
-                    local res   = gg.getResults(n)
-                    local edits = {}
-                    for _, r in ipairs(res) do
-                        table.insert(fpsSaved, {address = r.address, value = r.value, flags = r.flags})
-                        table.insert(edits,   {address = r.address, value = 120,    flags = r.flags})
-                    end
-                    gg.setValues(edits)
-                end
-                gg.clearResults()
+-- 2) XÓA HẲN (không phải tắt) mọi effect
+local function nukeEffects(root)
+    pcall(function()
+        for _, v in ipairs(root:GetDescendants()) do
+            if v:IsA("ParticleEmitter") or v:IsA("Trail")
+            or v:IsA("Smoke") or v:IsA("Fire")
+            or v:IsA("Sparkles") or v:IsA("Beam")
+            or v:IsA("PointLight") or v:IsA("SpotLight")
+            or v:IsA("SurfaceLight") then
+                v:Destroy()
+            elseif v:IsA("Decal") or v:IsA("Texture") then
+                v:Destroy()
+            elseif v:IsA("Sound") then
+                v:Destroy()
             end
         end
-
-        if #fpsSaved > 0 then
-            gg.toast("✅ FPS Boost ON (" .. #fpsSaved .. " giá trị)")
-            return true
-        else
-            gg.toast("⚠️ Không tìm thấy FPS cap — game có thể dùng cơ chế khác")
-            return false
-        end
-    else
-        -- Restore ĐÚNG các địa chỉ đã lưu (fix Lỗi 2)
-        if #fpsSaved > 0 then
-            gg.setValues(fpsSaved)
-            fpsSaved = {}
-        end
-        gg.toast("❌ FPS Boost OFF")
-        return false
-    end
+    end)
 end
+nukeEffects(Workspace)
 
--- ═══════════ CHỨC NĂNG 2: GIẢM PING ═══════════
-local function setPingBoost(state)
-    if state then
-        gg.toast("📡 Đang tối ưu Ping (client-side)...")
-        pcall(function()
-            os.execute("sync; echo 3 > /proc/sys/vm/drop_caches 2>/dev/null")
-        end)
-        gg.toast("✅ Ping Boost ON (hiệu quả hạn chế)")
-        return true
-    else
-        gg.toast("❌ Ping Boost OFF")
-        return false
-    end
-end
-
--- ═══════════ MENU LOOP (chạy được 100% trên Delta) ═══════════
-gg.toast("🚀 Booster Hub đã khởi động!")
-gg.setVisible(false)
-
-local running = true
-while running do
-    if gg.isVisible() then
-        gg.setVisible(false)
-
-        local list = {
-            "⚡ Tăng FPS        " .. (FPS_ON  and "🟢 ON" or "🔴 OFF"),
-            "📡 Giảm Ping      " .. (PING_ON and "🟢 ON" or "🔴 OFF"),
-            "───────── Đóng ─────────"
-        }
-        local c = gg.choice(list, nil, "═══ ⚡ BOOSTER HUB ⚡ ═══")
-
-        if c == 1 then
-            FPS_ON = setFPSBoost(not FPS_ON)
-        elseif c == 2 then
-            PING_ON = setPingBoost(not PING_ON)
-        elseif c == 3 or c == nil then
-            running = false
+-- 3) Xóa toàn bộ lighting effect
+pcall(function()
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 1e6
+    for _, fx in ipairs(Lighting:GetChildren()) do
+        if fx:IsA("PostEffect") or fx:IsA("Sky")
+        or fx:IsA("Atmosphere") or fx:IsA("Clouds") then
+            fx:Destroy()
         end
     end
-    gg.sleep(100)
-end
+end)
 
-gg.toast("👋 Booster Hub đã đóng")
+-- 4) Tắt âm thanh toàn cục (giảm CPU + RAM audio decode)
+pcall(function()
+    game:GetService("SoundService").RespectFilteringEnabled = true
+    for _, s in ipairs(game:GetService("SoundService"):GetDescendants()) do
+        if s:IsA("Sound") then s:Destroy() end
+    end
+end)
+
+-- 5) Dọn rác Lua liên tục (mạnh hơn bản cũ)
+task.spawn(function()
+    while task.wait(2) do
+        pcall(function() collectgarbage("collect") end)
+        nukeEffects(Workspace)  -- dọn effect mới spawn
+    end
+end)
+
+-- 6) Giảm tải network (ping ổn định khi treo lâu)
+pcall(function()
+    settings().Network.IncomingReplicationLag = 0.1
+end)
+
+pcall(function()
+    StarterGui:SetCore("SendNotification", {
+        Title = "✅ Xong!", Text = "RAM đã tối ưu tối đa", Duration = 3
+    })
+end)
